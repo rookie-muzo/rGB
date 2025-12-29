@@ -33,7 +33,7 @@ or just live sync the project and save via Roblox studio.
 
 ## Audio Assets
 
-The emulator uses pre-generated waveform audio assets for hardware-accurate sound synthesis. Generate these assets by running:
+The emulator uses pre-generated waveform audio assets for sound synthesis. Generate these assets by running:
 
 ```
 python generate_gameboy_waveforms.py
