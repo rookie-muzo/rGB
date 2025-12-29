@@ -70,7 +70,18 @@ function Memory.new(modules)
 
     memory.read_byte = function(address)
         local high_byte = bit32.band(address, 0xFF00)
-        return block_map[high_byte][address]
+        local block = block_map[high_byte]
+        if not block then
+            -- Unmapped memory returns 0x00
+            return 0x00
+        end
+        
+        -- Access the block with the address - this will trigger metatable __index if present
+        local value = block[address]
+        
+        -- If value is nil, return 0x00 (unmapped/missing memory)
+        -- This is normal for some memory regions
+        return value or 0x00
     end
 
     memory.write_byte = function(address, byte)

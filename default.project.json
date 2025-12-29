@@ -2,14 +2,54 @@
     "name": "Gameboy",
 
     "tree": {
-        "$className": "Folder",
+        "$className": "DataModel",
 
-        "Gameboy": {
-            "$path": "gameboy"
+        "ReplicatedStorage": {
+            "$className": "ReplicatedStorage",
+
+            "Gameboy": {
+                "$path": "gameboy"
+            },
+
+            "RemoteEvents": {
+                "$path": "RemoteEvents.lua"
+            },
+
+            "GameboyDataStore": {
+                "$path": "GameboyDataStore.lua"
+            },
+
+            "GameboyDashboard": {
+                "$path": "GameboyDashboard.lua"
+            },
+
+            "GameboyLeaderboard": {
+                "$path": "GameboyLeaderboard.lua"
+            }
         },
 
-        "Plugin": {
-            "$path": "main.server.lua"
+        "ServerScriptService": {
+            "$className": "ServerScriptService",
+
+            "GameboyServer": {
+                "$path": "main.server.lua"
+            }
+        },
+
+        "StarterGui": {
+            "$className": "StarterGui",
+
+            "GameboyClient": {
+                "$path": "GameboyClient.client.lua",
+                
+                "AudioClient": {
+                    "$path": "AudioClient.lua"
+                }
+            },
+
+            "SpectatorClient": {
+                "$path": "SpectatorClient.client.lua"
+            }
         }
     }
 }

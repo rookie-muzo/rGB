@@ -80,7 +80,9 @@ function Graphics.new(modules)
 
     graphics.oam.mt.__index = function(_: any, address)
         if address <= 0xFE9F then
-            return graphics.oam_raw[address]
+            local value = graphics.oam_raw[address]
+            -- Return 0x00 if value is nil (can happen during save state loading)
+            return value or 0x00
         end
         -- out of range? So sorry, return nothing
         return 0x00
@@ -189,7 +191,8 @@ function Graphics.new(modules)
         graphics.vram.bank = state.vram_bank
 
         for i = 0xFE00, 0xFE9F do
-            graphics.oam[i] = state.oam[i]
+            -- Ensure we don't write nil values (use 0x00 as default)
+            graphics.oam[i] = state.oam[i] or 0x00
         end
         graphics.vblank_count = state.vblank_count
         graphics.last_edge = state.last_edge
