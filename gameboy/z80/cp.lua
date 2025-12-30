@@ -7,10 +7,14 @@ local function apply(opcodes, opcode_cycles, z80, memory)
     local flags = reg.flags
 
     local cp_with_a = function(value)
+        -- Handle nil values (can occur during save state loading)
+        local a_value = reg.a or 0
+        local compare_value = value or 0
+        
         -- half-carry
-        flags.h = (reg.a % 0x10) - (value % 0x10) < 0
+        flags.h = (a_value % 0x10) - (compare_value % 0x10) < 0
 
-        local temp = reg.a - value
+        local temp = a_value - compare_value
 
         -- carry (and overflow correction)
         flags.c = temp < 0 or temp > 0xFF

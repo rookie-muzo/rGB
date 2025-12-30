@@ -43,20 +43,23 @@ function Timers.new(modules)
 
     io.write_logic[io.ports.TAC] = function(byte)
         io.ram[io.ports.TAC] = byte
-        timers.timer_enabled = (bit32.band(io.ram[io.ports.TAC], 0x4) == 0x4)
+        timers.timer_enabled = (bit32.band(byte, 0x4) == 0x4)
         timers.timer_offset = timers.system_clock
     end
 
     function timers:update()
         if self.timer_enabled then
-            local rate_select = bit32.band(io.ram[io.ports.TAC], 0x3)
+            local tac = io.ram[io.ports.TAC] or 0
+            local rate_select = bit32.band(tac, 0x3)
             while self.system_clock > self.timer_offset + self.clock_rates[rate_select] do
-                io.ram[io.ports.TIMA] = bit32.band(io.ram[io.ports.TIMA] + 1, 0xFF)
+                local tima = io.ram[io.ports.TIMA] or 0
+                io.ram[io.ports.TIMA] = bit32.band(tima + 1, 0xFF)
                 self.timer_offset += self.clock_rates[rate_select]
 
                 if io.ram[io.ports.TIMA] == 0x00 then
                     --overflow happened, first reset TIMA to TMA
-                    io.ram[io.ports.TIMA] = io.ram[io.ports.TMA]
+                    local tma = io.ram[io.ports.TMA] or 0
+                    io.ram[io.ports.TIMA] = tma
                     --then, fire off the timer interrupt
                     interrupts.raise(interrupts.Timer)
                 end

@@ -7,10 +7,13 @@ local function apply(opcodes, opcode_cycles, z80, memory)
     local flags = reg.flags
 
     local add_to_a = function(value)
+        -- Handle nil values (can occur during save state loading)
+        local a = reg.a or 0
+        local v = value or 0
         -- half-carry
-        flags.h = bit32.band(reg.a, 0xF) + bit32.band(value, 0xF) > 0xF
+        flags.h = bit32.band(a, 0xF) + bit32.band(v, 0xF) > 0xF
 
-        local sum = reg.a + value
+        local sum = a + v
 
         -- carry (and overflow correction)
         flags.c = sum > 0xFF
@@ -22,13 +25,16 @@ local function apply(opcodes, opcode_cycles, z80, memory)
     end
 
     local adc_to_a = function(value)
+        -- Handle nil values (can occur during save state loading)
+        local a = reg.a or 0
+        local v = value or 0
         -- half-carry
         local carry = 0
         if flags.c then
             carry = 1
         end
-        flags.h = bit32.band(reg.a, 0xF) + bit32.band(value, 0xF) + carry > 0xF
-        local sum = reg.a + value + carry
+        flags.h = bit32.band(a, 0xF) + bit32.band(v, 0xF) + carry > 0xF
+        local sum = a + v + carry
 
         -- carry (and overflow correction)
         flags.c = sum > 0xFF

@@ -137,13 +137,15 @@ function Memory.new(modules)
 
     memory.load_state = function(state)
         for i = 0xC000, 0xCFFF do
-            memory.work_ram_0[i] = state.work_ram_0[i]
+            -- Handle nil values (can occur during save state loading)
+            memory.work_ram_0[i] = state.work_ram_0[i] or 0
         end
         for i = 0xD000, (0xD000 + (4 * 7 * 1024) - 1) do
-            memory.work_ram_1_raw[i] = state.work_ram_1_raw[i]
+            -- Handle nil values (can occur during save state loading)
+            memory.work_ram_1_raw[i] = state.work_ram_1_raw[i] or 0
         end
 
-        memory.work_ram_1.bank = state.work_ram_1_bank
+        memory.work_ram_1.bank = state.work_ram_1_bank or 1
     end
 
     -- Fancy: make access to ourselves act as an array, reading / writing memory using the above

@@ -60,8 +60,16 @@ function Gameboy:save_state()
 end
 
 function Gameboy:load_state(state)
+    -- Ensure cartridge has data (loaded flag might be false after reset, but data is still there)
+    if not self.cartridge.header or not self.cartridge.raw_data then
+        error("Cannot load state: cartridge data is missing")
+    end
+    
     self.audio.load_state(state.audio)
-    self.cartridge.load_state(state.cartridge)
+    -- Cartridge state loading is safe even if state.cartridge is nil (for MBC None)
+    if state.cartridge then
+        self.cartridge.load_state(state.cartridge)
+    end
     self.io.load_state(state.io)
     self.memory.load_state(state.memory)
     self.graphics.load_state(state.graphics)
@@ -70,6 +78,36 @@ function Gameboy:load_state(state)
 
     -- Note: the underscore
     self.interrupts.enabled = state.interrupts_enabled
+    
+    -- Ensure cartridge is marked as loaded if data is present
+    if self.cartridge.header and self.cartridge.raw_data then
+        self.cartridge.loaded = true
+    end
+    
+    -- After all state is loaded, update tilemap references based on LCDC register
+    -- This is needed because the tilemap selection depends on LCDC bits
+    local ports = self.io.ports
+    local lcdc = self.io.ram[ports.LCDC]
+    
+    if lcdc then
+        -- Update window tilemap based on LCDC bit 6
+        if bit32.band(0x40, lcdc) ~= 0 then
+            self.graphics.registers.window_tilemap = self.graphics.cache.map_1
+            self.graphics.registers.window_attr = self.graphics.cache.map_1_attr
+        else
+            self.graphics.registers.window_tilemap = self.graphics.cache.map_0
+            self.graphics.registers.window_attr = self.graphics.cache.map_0_attr
+        end
+        
+        -- Update background tilemap based on LCDC bit 3
+        if bit32.band(0x08, lcdc) ~= 0 then
+            self.graphics.registers.background_tilemap = self.graphics.cache.map_1
+            self.graphics.registers.background_attr = self.graphics.cache.map_1_attr
+        else
+            self.graphics.registers.background_tilemap = self.graphics.cache.map_0
+            self.graphics.registers.background_attr = self.graphics.cache.map_0_attr
+        end
+    end
 end
 
 function Gameboy:step()

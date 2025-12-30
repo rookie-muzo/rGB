@@ -41,19 +41,26 @@ function Registers.new()
     end
 
     reg.af = function()
-        return bit32.lshift(reg.a, 8) + reg.f()
+        local a = reg.a or 0
+        return bit32.lshift(a, 8) + reg.f()
     end
 
     reg.bc = function()
-        return bit32.lshift(reg.b, 8) + reg.c
+        local b = reg.b or 0
+        local c = reg.c or 0
+        return bit32.lshift(b, 8) + c
     end
 
     reg.de = function()
-        return bit32.lshift(reg.d, 8) + reg.e
+        local d = reg.d or 0
+        local e = reg.e or 0
+        return bit32.lshift(d, 8) + e
     end
 
     reg.hl = function()
-        return bit32.lshift(reg.h, 8) + reg.l
+        local h = reg.h or 0
+        local l = reg.l or 0
+        return bit32.lshift(h, 8) + l
     end
 
     reg.set_bc = function(value)

@@ -78,10 +78,11 @@ function Cache.new(graphics)
     end
 
     cache.refreshOamEntry = function(index)
-        local y = graphics.oam[0xFE00 + index * 4 + 0] - 16
-        local x = graphics.oam[0xFE00 + index * 4 + 1] - 8
-        local tile_index = graphics.oam[0xFE00 + index * 4 + 2]
-        local flags = graphics.oam[0xFE00 + index * 4 + 3]
+        -- Safely read OAM data with nil checks
+        local y = (graphics.oam[0xFE00 + index * 4 + 0] or 0) - 16
+        local x = (graphics.oam[0xFE00 + index * 4 + 1] or 0) - 8
+        local tile_index = graphics.oam[0xFE00 + index * 4 + 2] or 0
+        local flags = graphics.oam[0xFE00 + index * 4 + 3] or 0
 
         cache.oam[index].x = x
         cache.oam[index].y = y
@@ -115,6 +116,8 @@ function Cache.new(graphics)
 
     cache.refreshAttributes = function(map_attr, x, y, address)
         local data = graphics.vram[address + (16 * 1024)]
+        -- Handle nil values (can occur during save state loading)
+        data = data or 0
         if graphics.gameboy.type == graphics.gameboy.types.color then
             map_attr[x][y].palette = graphics.palette.color_bg[bit32.band(data, 0x07)]
         else
@@ -134,6 +137,9 @@ function Cache.new(graphics)
         address = bit32.band(address, 0xFFFE)
         local lower_bits = graphics.vram[address + (16 * 1024 * bank)]
         local upper_bits = graphics.vram[address + (16 * 1024 * bank) + 1]
+        -- Handle nil values (can occur during save state loading)
+        lower_bits = lower_bits or 0
+        upper_bits = upper_bits or 0
         for x = 0, 7 do
             local palette_index = bit32.band(bit32.rshift(lower_bits, 7 - x), 0x1) + (bit32.band(bit32.rshift(upper_bits, 7 - x), 0x1) * 2)
             cache.tiles[tile_index][x][y] = palette_index
@@ -152,6 +158,10 @@ function Cache.new(graphics)
 
     cache.refreshTileIndex = function(x, y, address, map, attr)
         local tile_index = graphics.vram[address + (y * 32) + x]
+        -- Handle nil values (can occur during save state loading)
+        if tile_index == nil then
+            tile_index = 0
+        end
         if graphics.registers.tile_select == 0x9000 then
             if tile_index > 127 then
                 tile_index = tile_index - 256
@@ -191,10 +201,18 @@ function Cache.new(graphics)
         end
     end
 
+    cache.refreshAllOam = function()
+        -- Refresh all OAM entries (needed after loading save state)
+        for i = 0, 39 do
+            cache.refreshOamEntry(i)
+        end
+    end
+
     cache.refreshAll = function()
         cache.refreshTiles()
         cache.refreshTileAttributes()
         cache.refreshTileMaps()
+        cache.refreshAllOam()
     end
 
     return cache

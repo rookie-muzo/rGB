@@ -180,42 +180,104 @@ function Graphics.new(modules)
             state.color_obj_raw[i] = graphics.palette.color_obj_raw[i]
         end
 
+        -- Save register state
+        state.registers = {
+            display_enabled = graphics.registers.display_enabled,
+            window_enabled = graphics.registers.window_enabled,
+            large_sprites = graphics.registers.large_sprites,
+            sprites_enabled = graphics.registers.sprites_enabled,
+            background_enabled = graphics.registers.background_enabled,
+            oam_priority = graphics.registers.oam_priority,
+            tile_select = graphics.registers.tile_select,
+            status = {
+                mode = graphics.registers.status.mode,
+                lyc_interrupt_enabled = graphics.registers.status.lyc_interrupt_enabled,
+                oam_interrupt_enabled = graphics.registers.status.oam_interrupt_enabled,
+                vblank_interrupt_enabled = graphics.registers.status.vblank_interrupt_enabled,
+                hblank_interrupt_enabled = graphics.registers.status.hblank_interrupt_enabled,
+            }
+        }
+
         return state
     end
 
     graphics.load_state = function(state)
+        -- Load VRAM first (write directly to avoid triggering cache updates during load)
         for i = 0x8000, (0x8000 + (16 * 2 * 1024) - 1) do
-            graphics.vram[i] = state.vram[i]
+            -- Handle nil values (can occur during save state loading)
+            graphics.vram[i] = state.vram[i] or 0
         end
 
-        graphics.vram.bank = state.vram_bank
+        graphics.vram.bank = state.vram_bank or 0
 
+        -- Load OAM directly to raw array to avoid triggering refresh during load
         for i = 0xFE00, 0xFE9F do
             -- Ensure we don't write nil values (use 0x00 as default)
-            graphics.oam[i] = state.oam[i] or 0x00
+            graphics.oam_raw[i] = state.oam[i] or 0x00
         end
-        graphics.vblank_count = state.vblank_count
-        graphics.last_edge = state.last_edge
-        graphics.lcdstat = state.lcdstat
-        graphics.registers.status.mode = state.mode
+        
+        graphics.vblank_count = state.vblank_count or 0
+        graphics.last_edge = state.last_edge or 0
+        graphics.lcdstat = state.lcdstat or false
+        graphics.registers.status.mode = state.mode or 2
 
-        graphics.palette.bg = state.palette.bg
-        graphics.palette.obj0 = state.palette.obj0
-        graphics.palette.obj1 = state.palette.obj1
+        graphics.palette.bg = state.palette.bg or graphics.palette.bg
+        graphics.palette.obj0 = state.palette.obj0 or graphics.palette.obj0
+        graphics.palette.obj1 = state.palette.obj1 or graphics.palette.obj1
 
         for p = 0, 7 do
-            graphics.palette.color_bg[p] = state.color_bg[p]
-            graphics.palette.color_obj[p] = state.color_obj[p]
+            if state.color_bg and state.color_bg[p] then
+                graphics.palette.color_bg[p] = state.color_bg[p]
+            end
+            if state.color_obj and state.color_obj[p] then
+                graphics.palette.color_obj[p] = state.color_obj[p]
+            end
         end
 
         for i = 0, 63 do
-            graphics.palette.color_bg_raw[i] = state.color_bg_raw[i]
-            graphics.palette.color_obj_raw[i] = state.color_obj_raw[i]
+            if state.color_bg_raw and state.color_bg_raw[i] then
+                graphics.palette.color_bg_raw[i] = state.color_bg_raw[i]
+            end
+            if state.color_obj_raw and state.color_obj_raw[i] then
+                graphics.palette.color_obj_raw[i] = state.color_obj_raw[i]
+            end
         end
 
-        graphics.cache.refreshAll()
-        io.write_logic[ports.STAT](io.ram[ports.STAT])
-        io.write_logic[ports.LCDC](io.ram[ports.LCDC])
+        -- Refresh all graphics cache after loading (tiles, maps, OAM)
+        -- Wrap in pcall to catch any errors during cache refresh
+        local cacheSuccess, cacheError = pcall(function()
+            graphics.cache.refreshAll()
+        end)
+        if not cacheSuccess then
+            warn("[Graphics] Cache refresh failed during load_state:", cacheError)
+        end
+        
+        -- Restore register state directly (saved as part of state)
+        if state.registers then
+            graphics.registers.display_enabled = state.registers.display_enabled ~= nil and state.registers.display_enabled or true
+            graphics.registers.window_enabled = state.registers.window_enabled ~= nil and state.registers.window_enabled or true
+            graphics.registers.large_sprites = state.registers.large_sprites ~= nil and state.registers.large_sprites or false
+            graphics.registers.sprites_enabled = state.registers.sprites_enabled ~= nil and state.registers.sprites_enabled or true
+            graphics.registers.background_enabled = state.registers.background_enabled ~= nil and state.registers.background_enabled or true
+            graphics.registers.oam_priority = state.registers.oam_priority ~= nil and state.registers.oam_priority or false
+            graphics.registers.tile_select = state.registers.tile_select or 0x9000
+            
+            -- Tilemap references will be restored in Gameboy:load_state after IO is loaded
+            -- For now, set defaults (will be corrected later)
+            graphics.registers.background_tilemap = graphics.cache.map_0
+            graphics.registers.background_attr = graphics.cache.map_0_attr
+            graphics.registers.window_tilemap = graphics.cache.map_0
+            graphics.registers.window_attr = graphics.cache.map_0_attr
+            
+            -- Restore status register state
+            if state.registers.status then
+                graphics.registers.status.mode = state.registers.status.mode or 2
+                graphics.registers.status.lyc_interrupt_enabled = state.registers.status.lyc_interrupt_enabled or false
+                graphics.registers.status.oam_interrupt_enabled = state.registers.status.oam_interrupt_enabled or false
+                graphics.registers.status.vblank_interrupt_enabled = state.registers.status.vblank_interrupt_enabled or false
+                graphics.registers.status.hblank_interrupt_enabled = state.registers.status.hblank_interrupt_enabled or false
+            end
+        end
     end
 
     local scanline_data = {}
@@ -269,8 +331,12 @@ function Graphics.new(modules)
             scanline_data.bg_tile_y = scanline_data.bg_tile_y - 32
         end
 
-        scanline_data.sub_x = io.ram[ports.SCX] % 8
-        scanline_data.sub_y = (io.ram[ports.LY] + io.ram[ports.SCY]) % 8
+        -- Handle nil values (can occur during save state loading)
+        local scx = io.ram[ports.SCX] or 0
+        local ly = io.ram[ports.LY] or 0
+        local scy = io.ram[ports.SCY] or 0
+        scanline_data.sub_x = scx % 8
+        scanline_data.sub_y = (ly + scy) % 8
 
         scanline_data.current_map = graphics.registers.background_tilemap
         scanline_data.current_map_attr = graphics.registers.background_attr
@@ -317,12 +383,15 @@ function Graphics.new(modules)
                 -- DRAW BG PIXEL HERE
                 local sub_x = scanline_data.sub_x
                 local sub_y = scanline_data.sub_y
-                bg_index = scanline_data.active_tile[sub_x][sub_y]
+                bg_index = scanline_data.active_tile[sub_x][sub_y] or 0
                 local active_palette = scanline_data.active_attr.palette[bg_index]
 
-                game_screen[ly][dx][1] = active_palette[1]
-                game_screen[ly][dx][2] = active_palette[2]
-                game_screen[ly][dx][3] = active_palette[3]
+                -- Handle nil values (can occur during save state loading)
+                if active_palette and game_screen[ly] and game_screen[ly][dx] then
+                    game_screen[ly][dx][1] = active_palette[1] or 255
+                    game_screen[ly][dx][2] = active_palette[2] or 255
+                    game_screen[ly][dx][3] = active_palette[3] or 255
+                end
             end
 
             scanline_data.bg_index[scanline_data.x] = bg_index
@@ -491,8 +560,11 @@ function Graphics.new(modules)
     handle_mode[0] = function()
         if timers.system_clock - graphics.last_edge > 204 then
             graphics.last_edge = graphics.last_edge + 204
-            io.ram[ports.LY] = io.ram[ports.LY] + 1
-            if io.ram[ports.LY] == io.ram[ports.LYC] then
+            -- Handle nil values (can occur during save state loading)
+            local ly = io.ram[ports.LY] or 0
+            io.ram[ports.LY] = ly + 1
+            local lyc = io.ram[ports.LYC] or 0
+            if io.ram[ports.LY] == lyc then
                 -- set the LY compare bit
                 io.ram[ports.STAT] = bit32.bor(io.ram[ports.STAT], 0x4)
             else
@@ -518,7 +590,9 @@ function Graphics.new(modules)
     handle_mode[1] = function()
         if timers.system_clock - graphics.last_edge > 456 then
             graphics.last_edge = graphics.last_edge + 456
-            io.ram[ports.LY] = io.ram[ports.LY] + 1
+            -- Handle nil values (can occur during save state loading)
+            local ly = io.ram[ports.LY] or 0
+            io.ram[ports.LY] = ly + 1
             graphics.refresh_lcdstat()
         else
             graphics.next_edge = graphics.last_edge + 456

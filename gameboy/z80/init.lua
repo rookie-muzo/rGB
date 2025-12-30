@@ -82,36 +82,71 @@ function Z80.new(modules)
     z80.save_state = function()
         local state = {}
         state.double_speed = z80.double_speed
-        state.registers = z80.registers
+        -- Save registers explicitly (don't save functions, only data)
+        state.registers = {
+            a = reg.a,
+            b = reg.b,
+            c = reg.c,
+            d = reg.d,
+            e = reg.e,
+            h = reg.h,
+            l = reg.l,
+            pc = reg.pc,
+            sp = reg.sp,
+            flags = {
+                z = flags.z,
+                n = flags.n,
+                h = flags.h,
+                c = flags.c,
+            }
+        }
         state.halted = z80.halted
         return state
     end
 
     z80.load_state = function(state)
-        -- Note: doing this explicitly for safety, so as
-        -- not to replace the table with external, possibly old / wrong structure
-        flags.z = state.registers.flags.z
-        flags.n = state.registers.flags.n
-        flags.h = state.registers.flags.h
-        flags.c = state.registers.flags.c
+        if not state or not state.registers then
+            warn("[Z80] Invalid state structure in load_state")
+            return
+        end
+        
+        flags.z = state.registers.flags and state.registers.flags.z or false
+        flags.n = state.registers.flags and state.registers.flags.n or false
+        flags.h = state.registers.flags and state.registers.flags.h or false
+        flags.c = state.registers.flags and state.registers.flags.c or false
 
-        z80.registers.a = state.registers.a
-        z80.registers.b = state.registers.b
-        z80.registers.c = state.registers.c
-        z80.registers.d = state.registers.d
-        z80.registers.e = state.registers.e
-        z80.registers.h = state.registers.h
-        z80.registers.l = state.registers.l
-        z80.registers.pc = state.registers.pc
-        z80.registers.sp = state.registers.sp
+        z80.registers.a = state.registers.a or 0
+        z80.registers.b = state.registers.b or 0
+        z80.registers.c = state.registers.c or 0
+        z80.registers.d = state.registers.d or 0
+        z80.registers.e = state.registers.e or 0
+        z80.registers.h = state.registers.h or 0
+        z80.registers.l = state.registers.l or 0
+        
+        local pc = state.registers.pc or 0x100
+        if pc < 0 or pc > 0xFFFF then
+            warn("[Z80] Invalid PC value in save state:", pc, "- resetting to 0x100")
+            pc = 0x100
+        end
+        z80.registers.pc = pc
+        
+        local sp = state.registers.sp or 0xFFFE
+        if sp < 0 or sp > 0xFFFF then
+            warn("[Z80] Invalid SP value in save state:", sp, "- resetting to 0xFFFE")
+            sp = 0xFFFE
+        end
+        z80.registers.sp = sp
 
-        z80.double_speed = state.double_speed
+        z80.double_speed = state.double_speed or false
         if z80.double_speed then
             timers:set_double_speed()
         else
             timers:set_normal_speed()
         end
-        z80.halted = state.halted
+        z80.halted = state.halted or 0
+        if z80.halted ~= 0 and z80.halted ~= 1 then
+            z80.halted = 0
+        end
     end
 
     io.write_mask[0x4D] = 0x01
@@ -130,7 +165,10 @@ function Z80.new(modules)
     end
 
     function z80.set_at_hl(value)
-        memory.block_map[reg.h * 0x100][reg.h * 0x100 + reg.l] = value
+        -- Handle nil values (can occur during save state loading)
+        local h = reg.h or 0
+        local l = reg.l or 0
+        memory.block_map[h * 0x100][h * 0x100 + l] = value
     end
 
     function z80.read_nn()
@@ -194,19 +232,20 @@ function Z80.new(modules)
             print("Unimplemented WEIRDNESS after 0x10")
         end
 
-        if bit32.band(io.ram[0x4D], 0x01) ~= 0 then
+        local speed_register = io.ram[0x4D] or 0
+        if bit32.band(speed_register, 0x01) ~= 0 then
             --speed switch!
             print("Switching speeds!")
             if z80.double_speed then
                 z80.add_cycles = add_cycles_normal
                 z80.double_speed = false
-                io.ram[0x4D] = bit32.band(io.ram[0x4D], 0x7E) + 0x00
+                io.ram[0x4D] = bit32.band(speed_register, 0x7E) + 0x00
                 timers:set_normal_speed()
                 print("Switched to Normal Speed")
             else
                 z80.add_cycles = add_cycles_double
                 z80.double_speed = true
-                io.ram[0x4D] = bit32.band(io.ram[0x4D], 0x7E) + 0x80
+                io.ram[0x4D] = bit32.band(speed_register, 0x7E) + 0x80
                 timers:set_double_speed()
                 print("Switched to Double Speed")
             end
@@ -220,7 +259,10 @@ function Z80.new(modules)
     end
 
     z80.service_interrupt = function()
-        local fired = bit32.band(io.ram[0xFF], io.ram[0x0F])
+        -- Handle nil values (can occur during save state loading)
+        local if_register = io.ram[0xFF] or 0
+        local ie_register = io.ram[0x0F] or 0
+        local fired = bit32.band(if_register, ie_register)
         if fired ~= 0 then
             z80.halted = 0
             if interrupts.enabled ~= 0 then
@@ -237,12 +279,14 @@ function Z80.new(modules)
                     count = count + 1
                 end
                 -- we need to clear the corresponding bit first, to avoid infinite loops
-                io.ram[0x0F] = bit32.bxor(bit32.lshift(0x1, count), io.ram[0x0F])
+                io.ram[0x0F] = bit32.bxor(bit32.lshift(0x1, count), ie_register)
 
+                local sp = reg.sp or 0xFFFE
+                local pc = reg.pc or 0x100
+                reg.sp = bit32.band(0xFFFF, sp - 1)
+                write_byte(reg.sp, bit32.rshift(bit32.band(pc, 0xFF00), 8))
                 reg.sp = bit32.band(0xFFFF, reg.sp - 1)
-                write_byte(reg.sp, bit32.rshift(bit32.band(reg.pc, 0xFF00), 8))
-                reg.sp = bit32.band(0xFFFF, reg.sp - 1)
-                write_byte(reg.sp, bit32.band(reg.pc, 0xFF))
+                write_byte(reg.sp, bit32.band(pc, 0xFF))
 
                 reg.pc = vector
 

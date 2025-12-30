@@ -127,7 +127,9 @@ function Io.new(modules)
         address = address - 0xFF00
         if io.write_mask[address] then
             local masked_value = bit32.band(value, io.write_mask[address])
-            local masked_memory = bit32.band(io.ram[address], bit32.bnot(io.write_mask[address]))
+            -- Handle nil values (can occur during save state loading)
+            local current_ram_value = io.ram[address] or 0
+            local masked_memory = bit32.band(current_ram_value, bit32.bnot(io.write_mask[address]))
             value = masked_value + masked_memory
         end
         if io.write_logic[address] then

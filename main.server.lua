@@ -1194,7 +1194,40 @@ RemoteEvents.LoadState.OnServerEvent:Connect(function(player: Player, slotNumber
 	
 	-- Load state into emulator
 	local success, loadError = pcall(function()
+		-- Debug: Check PC before loading
+		local pcBefore = emulatorData.gameboy.processor.registers.pc
+		print("[Gameboy] Loading save state - PC before:", string.format("0x%04X", pcBefore))
+		
+		-- Ensure cartridge has data (loaded flag might be false after reset, but data is still there)
+		if not emulatorData.gameboy.cartridge.header or not emulatorData.gameboy.cartridge.raw_data then
+			warn("[Gameboy] WARNING: Cartridge data missing before loading save state!")
+			RemoteEvents.StatusMessage:FireClient(player, "Error: Cartridge data missing", false)
+			return
+		end
+		
 		emulatorData.gameboy:load_state(state)
+		
+		-- Debug: Check PC after loading
+		local pcAfter = emulatorData.gameboy.processor.registers.pc
+		print("[Gameboy] Loading save state - PC after:", string.format("0x%04X", pcAfter))
+		
+		-- Verify cartridge data is still accessible after loading state
+		if not emulatorData.gameboy.cartridge.header or not emulatorData.gameboy.cartridge.raw_data then
+			warn("[Gameboy] WARNING: Cartridge data missing after loading save state!")
+		else
+			emulatorData.gameboy.cartridge.loaded = true
+		end
+		
+		-- Check if PC is valid (not at entry point, which would indicate a reset)
+		if pcAfter == 0x100 then
+			warn("[Gameboy] WARNING: PC is at entry point (0x100) after loading - state may be invalid!")
+		end
+		
+		-- Verify we can read from the PC address (sanity check)
+		local testRead = emulatorData.gameboy.memory.read_byte(pcAfter)
+		if testRead == nil then
+			warn("[Gameboy] WARNING: Cannot read from PC address after loading state!")
+		end
 	end)
 	
 	if success then
@@ -1202,6 +1235,7 @@ RemoteEvents.LoadState.OnServerEvent:Connect(function(player: Player, slotNumber
 		print("[Gameboy] Save state loaded for", player.Name, "game:", emulatorData.currentGameId, "slot:", slotNumber)
 	else
 		RemoteEvents.StatusMessage:FireClient(player, "Error: Failed to load game state: " .. tostring(loadError), false)
+		warn("[Gameboy] Failed to load save state:", loadError)
 	end
 end)
 
