@@ -12,6 +12,7 @@ A Game Boy emulator for Roblox, ported from [LuaGB](https://github.com/zeta0134/
 - Spectating mode to watch other players
 - Audio synthesis using waveform assets
 - Per-player emulator instances
+- Game Boy Camera emulation (will document in the future)
 
 ## Requirements
 
