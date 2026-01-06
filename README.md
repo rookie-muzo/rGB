@@ -1,6 +1,8 @@
-# Roblox-Luau-GB
+# rGB
 
 A Game Boy emulator for Roblox, ported from [LuaGB](https://github.com/zeta0134/LuaGB) by zeta0134. This implementation uses Roblox's EditableImage API for rendering and includes multiplayer features like game libraries, save states, leaderboards, and spectating.
+
+Build yourself or play here: [rGB](https://www.roblox.com/games/106233970080829/rGB-A-Gameboy-Emulator)
 
 ## Features
 
